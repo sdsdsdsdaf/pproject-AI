@@ -1,6 +1,26 @@
 import ast
 import numpy as np
 
+def print_dict_structure(d, indent=0):
+    """Print dictionary structure without expanding large values."""
+    prefix = "  " * indent
+
+    if not isinstance(d, dict):
+        print(f"{prefix}- {type(d).__name__}")
+        return
+
+    for key, value in d.items():
+        key_str = str(key)
+        if len(key_str) > 60:  # 너무 긴 key는 잘라줌
+            key_str = key_str[:60] + "..."
+
+        # value 타입만 출력
+        if isinstance(value, dict):
+            print(f"{prefix}{key_str}/   (dict)")
+            print_dict_structure(value, indent + 1)
+        else:
+            print(f"{prefix}{key_str}: {type(value).__name__}")
+
 
 def safe_to_list(x):
     """
