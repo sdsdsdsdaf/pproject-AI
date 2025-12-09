@@ -1,7 +1,7 @@
 import ast
 import numpy as np
 
-def print_dict_structure(d, indent=0):
+def print_dict_structure(d, indent=0, max_value_length=None):
     """Print dictionary structure without expanding large values."""
     prefix = "  " * indent
 
@@ -9,7 +9,10 @@ def print_dict_structure(d, indent=0):
         print(f"{prefix}- {type(d).__name__}")
         return
 
-    for key, value in d.items():
+    for i, (key, value) in enumerate(d.items()):
+        if max_value_length and i >= max_value_length:
+            print(f"{prefix}... (and more keys not shown)")
+            break
         key_str = str(key)
         if len(key_str) > 60:  # 너무 긴 key는 잘라줌
             key_str = key_str[:60] + "..."

@@ -80,7 +80,6 @@ def preprocess_wHr(df:pd.DataFrame):
             "hr_std": arr.std(),
         })
 
-    print("Heart Rate Missing Count Before:", count)
     # tqdm 적용
     feats = pd.DataFrame(
         [extract_hr(x) for x in tqdm(df["heart_rate"], desc="Extracting HR features", leave=False)],

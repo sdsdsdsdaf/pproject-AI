@@ -25,6 +25,7 @@ DATA = 0
 MASK = 1
 MODAL_NAME = ['mLight','mACStatus', 'mActivity', 'mBle', 'mGps', 'wHr',
                   'mScreenStatus', 'mUsageStats', 'mWifi', 'wLight', 'wPedo']
+MIN_RATIO = 0.1  # 최소 데이터 커버리지 비율
 
 orginal_data_freq = {
     "mACStatus": 1,
@@ -195,7 +196,7 @@ for name in modality_names:   # ['wHr', 'mBle', 'mWifi', ...]
         metric_df=metric_train_df,
         resample_freq=FREQUENCY,
         interpolation=INTERPOLATION,
-        min_ratio=0.5,
+        min_ratio=MIN_RATIO,
         mask=True
     )
 
@@ -217,7 +218,7 @@ for key in keys:
 
 
 # %%
-file_name = f"ETRI 2024/processed_{INTERPOLATION}_{FREQUENCY}min_dataset.pkl"
+file_name = f"ETRI 2024/processed_{INTERPOLATION}_{FREQUENCY}min_{MIN_RATIO*100:.0f}%_MIN_MASK_dataset.pkl"
 import pickle
 with open(file_name, "wb") as f:
     pickle.dump(final_dataset, f)
