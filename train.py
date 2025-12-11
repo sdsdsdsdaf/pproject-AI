@@ -85,7 +85,7 @@ if __name__ == "__main__":
     # ---- 1) DATA LOAD ----
     train_data_dict = pkl.load(open('ETRI 2024\processed_linear_5min_10%_MIN_MASK_dataset.pkl', 'rb'))
 
-    required_mods = ['mLight','mACStatus', 'mActivity', 'mBle', 'mGps', 'wHr',
+    required_mods = ['mLight','mACStatus', 'mActivity', 'mGps', 'wHr',
                      'mScreenStatus', 'mUsageStats', 'mWifi', 'wLight', 'wPedo']
 
     full_dataset = DailyLifelogDataset(

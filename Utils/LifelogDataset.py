@@ -1,9 +1,11 @@
+import os
 import pandas as pd
 from torch.utils.data import Dataset
 import torch
 import numpy as np
 import datetime as dt
 from tqdm import tqdm
+import re
 
 
 class DailyLifelogDataset(Dataset):
@@ -85,6 +87,33 @@ class DailyLifelogDataset(Dataset):
             "label": self.label_map[key],  # ← 이미 tensor
             "key": key
         }
+
+class GANImputateDataset(Dataset):
+
+    """
+    Output Data Shape
+    Dict[
+        (subject_id, date):{
+            '(modality)':
+                '(data, mask)'
+        }
+    ]
+    """
+
+    def __init__(self, data_dir, frequency="5min"):
+        files = os.listdir(data_dir)
+        self.data = []
+
+        df = {}
+        self.frequency = frequency
+        for file in files:
+            file_path = os.path.join(data_dir, file)
+            modality = re.search(r'ch2025_([^_]+)_zero', file_path).group(1)
+            df[modality] = pd.read_csv(file_path)
+            df[modality]['timestamp'] = pd.to_datetime(df[modality]['timestamp'])
+
+
+
 
 
 if __name__ == "__main__":

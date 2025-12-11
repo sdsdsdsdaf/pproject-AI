@@ -27,11 +27,10 @@ class OutputData(BaseModel):
 
 if __name__ == "__main__":
 
-    required_mods = ['mLight','mACStatus', 'mActivity', 'mBle', 'mGps', 'wHr',
+    required_mods = ['mLight','mACStatus', 'mActivity', 'mGps', 'wHr',
                      'mScreenStatus', 'mUsageStats', 'mWifi', 'wLight', 'wPedo']
     feature_dims = {
         "mLight": 2,
-        "mBle": 12,
         "mACStatus": 2,
         "wPedo": 14,
         "mGps": 14,
@@ -42,14 +41,13 @@ if __name__ == "__main__":
         "mWifi": 8,
         "mScreenStatus": 2,
     }
+
     DROPOUT_RATIO = 0.1
     LR = 1e-3
-    WEIGHT_DECAY = 1e-5
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     INPUT_DIM = {k:288 for k in required_mods}  # 5min 간격, 24*60/5 = 288
     LATENT_DIM = 32
     FUSION_DIM = 128
-    BS = 32
     encoder_dict = {}
     modality_names = required_mods
 
@@ -60,8 +58,8 @@ if __name__ == "__main__":
             out_dim=FUSION_DIM,
         )
 
-    model = BasicMultimodalModel(
         modality_names=modality_names,
+    model = BasicMultimodalModel(
         encoder_dict=encoder_dict,
         fusion_dim=FUSION_DIM,
         dropout_ratio=DROPOUT_RATIO,
