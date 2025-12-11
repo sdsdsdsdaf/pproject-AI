@@ -211,11 +211,17 @@ final_dataset = {}
 keys = processed_dict["mACStatus"].keys()   # 공통 key
 
 for key in keys:
-    final_dataset[key] = {}
+    str_key = (key[0], key[1].isoformat())  # (subid, date)
+    final_dataset[str_key] = {}
     for name in modality_names:
         if key in processed_dict[name]:
-            final_dataset[key][name] = processed_dict[name][key] # KEY: MODALITY -> (subid, date)로 변환
+            # (subid, date)
+            final_dataset[str_key][name] = processed_dict[name][key] # KEY: MODALITY -> (subid, date)로 변환
 
+print("✅ Final dataset 생성 완료")
+print("key: ", list(final_dataset.keys())[:3])
+
+# %%
 
 # %%
 file_name = f"ETRI 2024/processed_{INTERPOLATION}_{FREQUENCY}min_{MIN_RATIO*100:.0f}%_MIN_MASK_dataset.pkl"

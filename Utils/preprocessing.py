@@ -254,6 +254,10 @@ def preprocess_day(
     if not isinstance(df.index, pd.DatetimeIndex):
         df = df.set_index("timestamp")
 
+    
+    df.index = pd.to_datetime(df.index).floor('min')
+    df = df.sort_index()
+
     df = df.select_dtypes(include=["number"])
     if df.empty:
         return (None, None) if mask else None
@@ -282,10 +286,9 @@ def preprocess_day(
 
     # 00:00 ~ 23:59 총 1440 tick (pandas 특성상 마지막 제거)
     full_index = pd.date_range(start=start, end=end, freq="1min")[:-1]
-
+ 
     # full-day 1분 timeline 기준으로 원본 정렬
     aligned = df.reindex(full_index)
-
     # ----------------------------------------------------------
     # (3) 최종 resample grid 생성 (예: 5분 단위)
     # ----------------------------------------------------------
@@ -303,11 +306,14 @@ def preprocess_day(
     if original_freq > resample_freq:
 
         # 먼저 target grid 로 선형 매핑
-        day = aligned.reindex(target_index)
+
+        day = aligned.ffill().bfill().reindex(target_index)
+        day = day.resample(f"{resample_freq}min").ffill()
 
         # 보간 수행 (interpolate → ffill → bfill)
         numeric_cols = day.select_dtypes(include=["number"]).columns
         day_before_interp = day.copy()
+        day = day.apply(pd.to_numeric, errors="coerce")
 
         if interpolation in ["linear", "time", "mean"]:
             day[numeric_cols] = (
@@ -318,6 +324,11 @@ def preprocess_day(
             )
         else:
             raise ValueError(f"Unknown interpolation method: {interpolation}")
+
+        if day.isna().any().any():
+            print("\n", day.isna().sum())
+            print("Warning: NaN values remain after interpolation.")
+            raise ValueError("NaN values remain after interpolation.")
 
         # mask 생성
         if mask:
@@ -370,6 +381,11 @@ def preprocess_day(
             )
         else:
             raise ValueError(f"Unknown interpolation method: {interpolation}")
+        
+        if day.isna().any().any():
+            print("\n", day.isna().sum())
+            print("Warning: NaN values remain after interpolation.")
+            raise ValueError("NaN values remain after interpolation.")
 
         # --------------------------
         # (E) mask 반환 (shape matched)
