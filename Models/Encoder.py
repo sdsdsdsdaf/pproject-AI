@@ -2,8 +2,15 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+class EncoderAbstractModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.out_dim = None
 
-class SimpleEncoder1D(nn.Module):
+    def forward(self, x):
+        raise NotImplementedError
+
+class SimpleEncoder1D(EncoderAbstractModel):
     def __init__(self, in_channels, latent_dim=64, out_dim=64, kernel_size=5, padding=2):
         super().__init__()
         self.out_dim = out_dim
@@ -22,22 +29,32 @@ class SimpleEncoder1D(nn.Module):
         return x
 
 class MLPEncoder(nn.Module):
-    def __init__(self, in_channels, out_dim=64):
+    def __init__(self, in_channels, latent_dim=64, out_dim=64):
         super().__init__()
         self.out_dim = out_dim
+        self.net = None
+        self.in_channels = in_channels
+        self.latent_dim = latent_dim
 
-        self.net = nn.Sequential(
-            nn.Flatten(),  # (B, C*T)
-            nn.Linear(in_channels * 100, 128),  # assuming fixed T=100 for simplicity
-            nn.ReLU(),
-            nn.Linear(128, out_dim),
-        )
 
     def forward(self, x):  # x: (B, C, T)
+        if x.ndim == 2:
+            x = x.unsqueeze(0)  # (C, T)
+        
+        B, C, T = x.shape
+        if self.net is None:
+
+            self.net = nn.Sequential(
+                nn.Flatten(),  # (B, C*T)
+                nn.Linear(C*T, self.latent_dim),  # assuming fixed T=100 for simplicity
+                nn.ReLU(),
+                nn.Linear(self.latent_dim, self.out_dim),
+            ).to(x.device)
         x = self.net(x)    # (B, out_dim)
+
         return x
 
-class SimpleLSTMEncoder1D(nn.Module):
+class SimpleLSTMEncoder1D(EncoderAbstractModel):
     def __init__(self, in_channels, latent_dim=64, out_dim=64):
         super().__init__()
         # x: (B, C, T) → LSTM 입력: (B, T, C)
@@ -47,6 +64,7 @@ class SimpleLSTMEncoder1D(nn.Module):
             batch_first=True,
             bidirectional=False,
         )
+        self.out_dim = out_dim
         self.proj = nn.Linear(latent_dim, out_dim)
 
     def forward(self, x):          # x: (B, C, T)
@@ -56,7 +74,7 @@ class SimpleLSTMEncoder1D(nn.Module):
         x = self.proj(x)           # (B, out_dim)
         return x
 
-class SimpleLSTMAttnEncoder1D(nn.Module):
+class SimpleLSTMAttnEncoder1D(EncoderAbstractModel):
     """
     입력:  x (B, C, T)
     출력:  (B, out_dim)
@@ -77,6 +95,7 @@ class SimpleLSTMAttnEncoder1D(nn.Module):
             nn.Linear(latent_dim, 1),
         )
         self.proj = nn.Linear(latent_dim, out_dim)
+        self.out_dim = out_dim
 
     def forward(self, x):               # (B, C, T)
         x = x.transpose(1, 2)           # (B, T, C)  (LSTM batch_first 입력 형태) 
@@ -89,13 +108,11 @@ class SimpleLSTMAttnEncoder1D(nn.Module):
         out = self.proj(context)        # (B, out_dim)
         return out
 
-import torch
-import torch.nn as nn
-import math
 
-class SimpleTransformerEncoder1D(nn.Module):
+class SimpleTransformerEncoder1D(EncoderAbstractModel):
     def __init__(self, in_channels, latent_dim=64, out_dim=64, num_heads=8, num_layers=2, dropout=0.1):
         super().__init__()
+        self.input_norm = nn.LayerNorm(in_channels)
         self.embed = nn.Linear(in_channels, latent_dim)  # (B, T, C) → (B, T, D)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=latent_dim,
@@ -107,9 +124,16 @@ class SimpleTransformerEncoder1D(nn.Module):
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
         self.pool = nn.AdaptiveAvgPool1d(1)  # Transformer 출력 → (B, D, 1) → (B, D)
         self.proj = nn.Linear(latent_dim, out_dim)
+        self.out_dim = out_dim
+
 
     def forward(self, x: torch.Tensor):  # x: (B, C, T)
+        
+        if torch.isnan(x).any() or torch.isinf(x).any():
+            raise ValueError("NaN or Inf detected in input to Transformer")
+
         x = x.transpose(1, 2)      # (B, T, C)
+        x = self.input_norm(x)     # (B, T, C)
         x = self.embed(x)          # (B, T, D)
         x = self.transformer(x)    # (B, T, D) self-attention 적용
         x = x.transpose(1, 2)      # (B, D, T) pool 위해

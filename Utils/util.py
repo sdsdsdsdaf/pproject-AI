@@ -16,6 +16,38 @@ except ImportError:
 
 from sklearn.metrics import f1_score
 
+def init_weight(model:nn.Module, act_fn=nn.GELU):
+    for m in model.modules():
+        if act_fn == nn.GELU:
+            if isinstance(m, (nn.Conv1d, nn.Linear)):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            
+
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            
+            if isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.LayerNorm):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
+            
+        else:
+            if isinstance(m, (nn.Conv1d, nn.Linear)):
+                nn.init.kaiming_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight)
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
+            
+            if isinstance(m, nn.BatchNorm1d) or isinstance(m, nn.LayerNorm):
+                nn.init.ones_(m.weight)
+                nn.init.zeros_(m.bias)
 
 def custom_collate_fn(batch):
     keys = [item["key"] for item in batch]
@@ -123,7 +155,7 @@ def safe_to_list(x):
     # 나머지 타입 → 처리 불가
     return []
 
-def evaluate_model(model:nn.Module, data_loader, criterion, device, task_classes, metric="f1_macro", use_wandb=False):
+def evaluate_model(model:nn.Module, data_loader, criterion, device, task_classes:list[int]|dict[str,int], metric="f1_macro", use_wandb=False):
     model.eval()
     total_loss = 0
 
@@ -131,8 +163,22 @@ def evaluate_model(model:nn.Module, data_loader, criterion, device, task_classes
     preds = defaultdict(list)
     trues = defaultdict(list)
 
-    def str_to_num(task:str):
-        mapping = {
+    def list_to_dict(task_classes:list[int]|dict[str,int]):
+        if isinstance(task_classes, list):
+            return {
+                "Q1": task_classes[0],
+                "Q2": task_classes[1],
+                "Q3": task_classes[2],
+                "S1": task_classes[3],
+                "S2": task_classes[4],
+                "S3": task_classes[5]
+            }
+        elif isinstance(task_classes, dict):
+            return task_classes
+        else:
+            raise ValueError(f"Unknown task_classes type: {type(task_classes)}")
+    def str_to_num(task:str) -> int:
+        map_table = {
             "Q1": 0,
             "Q2": 1,
             "Q3": 2,
@@ -140,8 +186,10 @@ def evaluate_model(model:nn.Module, data_loader, criterion, device, task_classes
             "S2": 4,
             "S3": 5
         }
-        return mapping[task]
 
+        return map_table[task]
+
+    task_classes = list_to_dict(task_classes)
     with torch.no_grad():
         for batch in tqdm(data_loader, desc="Evaluating", leave=False):
              # --- Move data to device ---
@@ -176,17 +224,10 @@ def evaluate_model(model:nn.Module, data_loader, criterion, device, task_classes
     # 텐서 concat
     preds = {t: torch.cat(preds[t]) for t in preds}
     trues = {t: torch.cat(trues[t]) for t in trues}
-    task_dict = {
-        "Q1":2,
-        "Q2":2,
-        "Q3":2,
-        "S1":3,
-        "S2":2,
-        "S3":2
-    }
+    
     # F1 계산
     if metric == "f1_macro":
-        macro_f1, f1_each = multitask_f1_macro(preds, trues, task_dict)
+        macro_f1, f1_each = multitask_f1_macro(preds, trues, task_classes)
     elif metric == "f1_each":
         for t in task_classes:
             f1_each[t] = (preds[t].argmax(dim=1) == trues[t]).float().mean().item()
@@ -195,7 +236,7 @@ def evaluate_model(model:nn.Module, data_loader, criterion, device, task_classes
 
 
     return {
-        "loss": total_loss / preds[list(preds.keys())[0]].shape[0],
+        "loss": total_loss / len(data_loader),
         "f1_macro": macro_f1,
         "f1_each": f1_each
     }
@@ -237,11 +278,27 @@ def train_one_epoch(model:nn.Module, train_loader:DataLoader, criterion, optimiz
 
 
 def train(model:nn.Module, epoch:int, train_loader:DataLoader, test_loader:DataLoader, criterion, optimizer:torch.optim.Optimizer, device:str|torch.device, metric="f1_macro", weight_dir="ETRI 2024/Weights", use_wandb=False):
+
+    """
+    Args:
+        model (nn.Module): 모델
+        epoch (int): 에폭 수
+        train_loader (DataLoader): 학습 데이터 로더
+        test_loader (DataLoader): 검증 데이터 로더
+        criterion: 손실 함수
+        optimizer (torch.optim.Optimizer): 최적화 알고리즘
+        device (str|torch.device): 학습 장치
+    Returns:
+        result (dict):
+            - key: "best_metric", "best_val_loss", "train_loss_list", "test_loss_list", "test_metric_list"
+    """
+    
     model.train()
     train_loss_list = []
     test_loss_list = []
     test_metric_list = []
     best_metric = 0.0
+    best_val_loss = float('inf')
     os.makedirs(weight_dir, exist_ok=True)
     file_path = os.path.join(weight_dir, "best_model.pth")
     for E in range(1, epoch+1):
@@ -254,6 +311,9 @@ def train(model:nn.Module, epoch:int, train_loader:DataLoader, test_loader:DataL
             best_metric = eval_result[metric]
             torch.save(model.state_dict(), file_path)
             print(f"  -> New best model saved with {metric}: {best_metric:.4f}")
+        if eval_result['loss'] < best_val_loss:
+            best_val_loss = eval_result['loss']
+
 
         train_loss_list.append(train_loss)
         test_loss_list.append(eval_result['loss'])
@@ -267,5 +327,13 @@ def train(model:nn.Module, epoch:int, train_loader:DataLoader, test_loader:DataL
                 "val_loss": eval_result['loss'],
                 f"val_{metric}": eval_result[metric],
             })
+
+    result = {
+        "best_metric": best_metric,
+        "best_val_loss": best_val_loss,
+        "train_loss_list": train_loss_list,
+        "test_loss_list": test_loss_list,
+        "test_metric_list": test_metric_list
+    }
         
-    return best_metric, train_loss_list, test_loss_list, test_metric_list
+    return result
